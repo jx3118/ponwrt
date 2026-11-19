@@ -56,11 +56,11 @@ jobs:
           sed -i '/CONFIG_TARGET_ALL_PROFILES/d' "$DOT_CONFIG"
 
           cat << 'EOF' >> "$DOT_CONFIG"
-CONFIG_TARGET_airoha=y
-CONFIG_TARGET_airoha_an7581=y
-CONFIG_TARGET_MULTI_PROFILE=n
-CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md=y
-EOF
+          CONFIG_TARGET_airoha=y
+          CONFIG_TARGET_airoha_an7581=y
+          CONFIG_TARGET_MULTI_PROFILE=n
+          CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md=y
+          EOF
 
           make -C "$OPENWRT_PATH" defconfig
 
