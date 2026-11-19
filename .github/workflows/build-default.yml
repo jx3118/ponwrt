@@ -1,0 +1,119 @@
+name: Build PonWrt Single Target (nokia_xg-040g-md)
+
+on:
+  workflow_dispatch:
+
+env:
+  PONWRT_REPO: https://github.com/pbs05/ponwrt.git
+  TARGET_PROFILE: nokia_xg-040g-md
+  ARTIFACT_NAME: ponwrt-airoha-an7581-nokia_xg-040g-md
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Build Host Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          sudo apt update -y && sudo apt full-upgrade -y
+          sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+            bzip2 ccache clang cmake cpio curl device-tree-compiler ecj fastjar flex gawk gettext gcc-multilib \
+            g++-multilib git gnutls-dev gperf haveged help2man intltool lib32gcc-s1 libc6-dev-i386 libelf-dev \
+            libglib2.0-dev libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses-dev libpython3-dev \
+            libreadline-dev libssl-dev libtool libyaml-dev libz-dev lld llvm lrzsz mkisofs msmtp nano \
+            ninja-build p7zip p7zip-full patch pkgconf python3 python3-pip python3-ply python3-docutils \
+            python3-pyelftools qemu-utils re2c rsync scons squashfs-tools subversion swig texinfo uglifyjs \
+            upx-ucl unzip vim wget xmlto xxd zlib1g-dev zstd pahole
+
+      - name: Clone PonWrt Source and Update Feeds
+        run: |
+          REPO_ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
+          OPENWRT_PATH="$REPO_ROOT/openwrt"
+          SCRIPTS_FEEDS="$OPENWRT_PATH/scripts/feeds"
+
+          rm -rf "$OPENWRT_PATH"
+          git clone --depth=1 "$PONWRT_REPO" "$OPENWRT_PATH"
+          echo "OPENWRT_PATH=$OPENWRT_PATH" >> "$GITHUB_ENV"
+
+          "$SCRIPTS_FEEDS" update -a
+          "$SCRIPTS_FEEDS" install -a
+
+      - name: Configure Single Device Target
+        run: |
+          BASE_CONFIG="$OPENWRT_PATH/configs/an7581.config"
+          DOT_CONFIG="$OPENWRT_PATH/.config"
+
+          test -f "$BASE_CONFIG" || { echo "Missing base config: $BASE_CONFIG"; exit 1; }
+          cp "$BASE_CONFIG" "$DOT_CONFIG"
+
+          sed -i '/CONFIG_TARGET_DEVICE_/d' "$DOT_CONFIG"
+          sed -i '/CONFIG_TARGET_MULTI_PROFILE/d' "$DOT_CONFIG"
+          sed -i '/CONFIG_TARGET_ALL_PROFILES/d' "$DOT_CONFIG"
+
+          cat << 'EOF' >> "$DOT_CONFIG"
+CONFIG_TARGET_airoha=y
+CONFIG_TARGET_airoha_an7581=y
+CONFIG_TARGET_MULTI_PROFILE=n
+CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md=y
+EOF
+
+          make -C "$OPENWRT_PATH" defconfig
+
+      - name: Download Sources and Compile Firmware
+        run: |
+          make -C "$OPENWRT_PATH" download -j8
+          find "$OPENWRT_PATH/dl" -size -1024c -exec ls -l {} \; -exec rm -f {} \;
+          make -C "$OPENWRT_PATH" -j$(nproc) || make -C "$OPENWRT_PATH" -j1 V=s
+
+      - name: Collect and Verify Firmware Artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          REPO_ROOT="${GITHUB_WORKSPACE:-$(pwd)}"
+          ARTIFACT_DIR="$REPO_ROOT/firmware_output"
+          BIN_DIR="$OPENWRT_PATH/bin/targets/airoha/an7581"
+
+          rm -rf "$ARTIFACT_DIR"
+          mkdir -p "$ARTIFACT_DIR"
+
+          if [ ! -d "$BIN_DIR" ]; then
+            echo "Build output directory not found: $BIN_DIR"
+            exit 1
+          fi
+
+          ARTIFACTS=("$BIN_DIR"/*"$TARGET_PROFILE"*)
+          if [ "${#ARTIFACTS[@]}" -eq 0 ]; then
+            echo "No firmware artifacts matching '*$TARGET_PROFILE*' found in $BIN_DIR"
+            ls -la "$BIN_DIR"
+            exit 1
+          fi
+
+          for file in "${ARTIFACTS[@]}"; do
+            if [ ! -f "$file" ] || [ ! -s "$file" ]; then
+              echo "Invalid or empty firmware file: $file"
+              exit 1
+            fi
+            cp -v "$file" "$ARTIFACT_DIR/"
+          done
+
+          (
+            cd "$ARTIFACT_DIR"
+            sha256sum * > SHA256SUMS.txt
+          )
+
+          echo "=== Collected Artifacts ==="
+          ls -lh "$ARTIFACT_DIR"
+          cat "$ARTIFACT_DIR/SHA256SUMS.txt"
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: firmware_output
