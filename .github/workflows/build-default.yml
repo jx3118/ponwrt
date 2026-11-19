@@ -1,12 +1,12 @@
-name: Build PonWrt Single Target (nokia_xg-040g-md)
+name: Build PonWrt Single Target (nokia_xg-040g-md-ubi)
 
 on:
   workflow_dispatch:
 
 env:
   PONWRT_REPO: https://github.com/pbs05/ponwrt.git
-  TARGET_PROFILE: nokia_xg-040g-md
-  ARTIFACT_NAME: ponwrt-airoha-an7581-nokia_xg-040g-md
+  TARGET_PROFILE: nokia_xg-040g-md-ubi
+  ARTIFACT_NAME: ponwrt-airoha-an7581-nokia_xg-040g-md-ubi
 
 jobs:
   build:
@@ -51,28 +51,27 @@ jobs:
           test -f "$BASE_CONFIG" || { echo "Missing base config: $BASE_CONFIG"; exit 1; }
           cp "$BASE_CONFIG" "$DOT_CONFIG"
 
-          echo "=== Inspecting matching device symbols in target/linux/airoha ==="
-          grep -rn "xg-040g" "$OPENWRT_PATH/target/linux/airoha/" || true
-
           sed -i '/CONFIG_TARGET_DEVICE_/d' "$DOT_CONFIG"
           sed -i '/CONFIG_TARGET_airoha_an7581_DEVICE_/d' "$DOT_CONFIG"
           sed -i '/CONFIG_TARGET_MULTI_PROFILE/d' "$DOT_CONFIG"
           sed -i '/CONFIG_TARGET_ALL_PROFILES/d' "$DOT_CONFIG"
+          sed -i '/CONFIG_TARGET_PROFILE/d' "$DOT_CONFIG"
 
           cat << 'EOF' >> "$DOT_CONFIG"
           CONFIG_TARGET_airoha=y
           CONFIG_TARGET_airoha_an7581=y
           CONFIG_TARGET_MULTI_PROFILE=n
-          CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md=y
+          CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md-ubi=y
+          CONFIG_TARGET_PROFILE="DEVICE_nokia_xg-040g-md-ubi"
           EOF
 
           make -C "$OPENWRT_PATH" defconfig
 
-          echo "=== Active DEVICE_ lines in .config ==="
-          grep "DEVICE_" "$DOT_CONFIG" || true
+          echo "=== Active DEVICE_ and PROFILE lines in .config ==="
+          grep -E "^CONFIG_TARGET_airoha_an7581_DEVICE_.*=y|^CONFIG_TARGET_PROFILE=" "$DOT_CONFIG" || true
 
-          if ! grep -q "CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md=y" "$DOT_CONFIG"; then
-            echo "ERROR: nokia_xg-040g-md was not enabled by defconfig! Check device name above."
+          if ! grep -q '^CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md-ubi=y$' "$DOT_CONFIG"; then
+            echo "ERROR: nokia_xg-040g-md-ubi was not enabled by defconfig!"
             exit 1
           fi
 
