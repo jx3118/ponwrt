@@ -51,7 +51,11 @@ jobs:
           test -f "$BASE_CONFIG" || { echo "Missing base config: $BASE_CONFIG"; exit 1; }
           cp "$BASE_CONFIG" "$DOT_CONFIG"
 
+          echo "=== Inspecting matching device symbols in target/linux/airoha ==="
+          grep -rn "xg-040g" "$OPENWRT_PATH/target/linux/airoha/" || true
+
           sed -i '/CONFIG_TARGET_DEVICE_/d' "$DOT_CONFIG"
+          sed -i '/CONFIG_TARGET_airoha_an7581_DEVICE_/d' "$DOT_CONFIG"
           sed -i '/CONFIG_TARGET_MULTI_PROFILE/d' "$DOT_CONFIG"
           sed -i '/CONFIG_TARGET_ALL_PROFILES/d' "$DOT_CONFIG"
 
@@ -63,6 +67,14 @@ jobs:
           EOF
 
           make -C "$OPENWRT_PATH" defconfig
+
+          echo "=== Active DEVICE_ lines in .config ==="
+          grep "DEVICE_" "$DOT_CONFIG" || true
+
+          if ! grep -q "CONFIG_TARGET_airoha_an7581_DEVICE_nokia_xg-040g-md=y" "$DOT_CONFIG"; then
+            echo "ERROR: nokia_xg-040g-md was not enabled by defconfig! Check device name above."
+            exit 1
+          fi
 
       - name: Download Sources and Compile Firmware
         run: |
